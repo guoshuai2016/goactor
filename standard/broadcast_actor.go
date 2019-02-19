@@ -1,7 +1,7 @@
 package standard
 
 import (
-	. "github.com/goactor/system"
+	. "github.com/xxpxxxxp/goactor/system"
 )
 
 type BroadcastActor struct {
