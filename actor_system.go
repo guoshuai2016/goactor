@@ -20,11 +20,10 @@ type ActorSystem struct {
 
 func (system *ActorSystem) AddActor(name string, actorImpl ActorInterface) (ok bool, err error) {
 	system.lock.Lock()
-	defer system.lock.Unlock()
 
 	actor := &innerActor{
 		actorImpl:  actorImpl,
-		notifyChan: make(chan *Event, 1),
+		notifyChan: make(chan interface{}, 1),
 		events:     queue.NewQueue(),
 		name:       name,
 		system:     system,
@@ -37,6 +36,8 @@ func (system *ActorSystem) AddActor(name string, actorImpl ActorInterface) (ok b
 		actors[0] = actor
 		system.actors[name] = actors
 	}
+
+	system.lock.Unlock()
 	go actor.loop()
 	return true, nil
 }
@@ -72,7 +73,7 @@ func (system *ActorSystem) RemoveActor(name string, actorImpl ActorInterface) (o
 	return false, errors.New("actor not in system")
 }
 
-func (system *ActorSystem) Shutdown(name string) (ok bool, err error) {
+func (system *ActorSystem) Shutdown() (ok bool, err error) {
 	system.lock.Lock()
 	defer system.lock.Unlock()
 	for _, actors := range system.actors {

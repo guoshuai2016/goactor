@@ -50,6 +50,10 @@ type HttpActor struct {
 	Client *http.Client
 }
 
+func NewDefaultHttpActor() *HttpActor {
+	return &HttpActor{Client: &http.Client{}}
+}
+
 func (h *HttpActor) OnPlugin(system *ActorSystem) {}
 
 func (h *HttpActor) Receive(system *ActorSystem, eventType EventType, event interface{}) interface{} {

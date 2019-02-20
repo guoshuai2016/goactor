@@ -74,8 +74,16 @@ type GetSubNodesResponse struct {
 
 type ZookeeperActor struct {
 	Conn    *zk.Conn
-	Watches map[string]map[string]struct{}
-	rwMutx  sync.RWMutex
+	watches map[string]map[string]struct{}
+	rwMutx  *sync.RWMutex
+}
+
+func NewZookeeperActor(conn *zk.Conn) *ZookeeperActor {
+	return &ZookeeperActor{
+		Conn:    conn,
+		watches: make(map[string]map[string]struct{}),
+		rwMutx:  &sync.RWMutex{},
+	}
 }
 
 func (zoo *ZookeeperActor) OnPlugin(system *ActorSystem) {}
@@ -102,11 +110,11 @@ func (zoo *ZookeeperActor) Receive(system *ActorSystem, eventType EventType, eve
 	case WatchPathRequest:
 		zoo.rwMutx.Lock()
 		defer zoo.rwMutx.Unlock()
-		if _, ok := zoo.Watches[request.Path]; !ok {
-			zoo.Watches[request.Path] = make(map[string]struct{})
+		if _, ok := zoo.watches[request.Path]; !ok {
+			zoo.watches[request.Path] = make(map[string]struct{})
 		}
-		if _, ok := zoo.Watches[request.Path][request.Caller]; !ok {
-			zoo.Watches[request.Path][request.Caller] = struct{}{}
+		if _, ok := zoo.watches[request.Path][request.Caller]; !ok {
+			zoo.watches[request.Path][request.Caller] = struct{}{}
 			go zoo.Watch(system, request.Path, request.ChangeType)
 		}
 		return nil
@@ -140,7 +148,7 @@ func (zoo *ZookeeperActor) Watch(system *ActorSystem, path string, changeType Pa
 	callback := func(result *WatchPathResult) {
 		zoo.rwMutx.RLock()
 		defer zoo.rwMutx.RUnlock()
-		for actor := range zoo.Watches[path] {
+		for actor := range zoo.watches[path] {
 			system.Request(actor, result)
 		}
 	}

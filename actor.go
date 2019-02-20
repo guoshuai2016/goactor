@@ -24,7 +24,7 @@ type ActorInterface interface {
 
 type innerActor struct {
 	actorImpl  ActorInterface
-	notifyChan chan *Event
+	notifyChan chan interface{}
 	events     *queue.Queue
 
 	name   string
@@ -37,14 +37,6 @@ func (actor *innerActor) push(event *Event) {
 	case actor.notifyChan <- nil:
 	default:
 	}
-}
-
-func (actor *innerActor) plugin() {
-	actor.actorImpl.OnPlugin(actor.system)
-}
-
-func (actor *innerActor) pullout() {
-	actor.actorImpl.OnPullout(actor.system)
 }
 
 func (actor *innerActor) loop() {
