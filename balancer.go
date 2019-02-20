@@ -1,4 +1,4 @@
-package system
+package goactor
 
 import (
 	"math/rand"

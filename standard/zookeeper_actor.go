@@ -4,9 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"github.com/samuel/go-zookeeper/zk"
-	. "github.com/xxpxxxxp/goactor/system"
+	. "github.com/xxpxxxxp/goactor"
 	"path"
 	"reflect"
+	"sync"
 )
 
 type CreateNodeRequest struct {
@@ -31,9 +32,23 @@ type BatchNodesOperationRequest struct {
 	Operation NodeOperation
 }
 
+type PathChangeType int
+
+const (
+	PathCreated = 1
+	PathDeleted = 1 << 1
+)
+
 type WatchPathRequest struct {
-	Caller string
-	Path   string
+	Caller     string
+	Path       string
+	ChangeType PathChangeType
+}
+
+type WatchPathResult struct {
+	Path       string
+	ChangeType PathChangeType
+	Error      error
 }
 
 type RemoveNodeRequest string
@@ -58,9 +73,12 @@ type GetSubNodesResponse struct {
 }
 
 type ZookeeperActor struct {
-	Conn     *zk.Conn
-	BasePath string
+	Conn    *zk.Conn
+	Watches map[string]map[string]struct{}
+	rwMutx  sync.RWMutex
 }
+
+func (zoo *ZookeeperActor) OnPlugin(system *ActorSystem) {}
 
 func (zoo *ZookeeperActor) Receive(system *ActorSystem, eventType EventType, event interface{}) interface{} {
 	switch request := event.(type) {
@@ -81,6 +99,17 @@ func (zoo *ZookeeperActor) Receive(system *ActorSystem, eventType EventType, eve
 		case NodeDelete:
 			return bulkDeleteZNodes(zoo.Conn, request.Paths)
 		}
+	case WatchPathRequest:
+		zoo.rwMutx.Lock()
+		defer zoo.rwMutx.Unlock()
+		if _, ok := zoo.Watches[request.Path]; !ok {
+			zoo.Watches[request.Path] = make(map[string]struct{})
+		}
+		if _, ok := zoo.Watches[request.Path][request.Caller]; !ok {
+			zoo.Watches[request.Path][request.Caller] = struct{}{}
+			go zoo.Watch(system, request.Path, request.ChangeType)
+		}
+		return nil
 	case RemoveNodeRequest:
 		return removeZNode(zoo.Conn, string(request))
 	case RmrRequest:
@@ -103,6 +132,68 @@ func (zoo *ZookeeperActor) Receive(system *ActorSystem, eventType EventType, eve
 	}
 
 	return nil
+}
+
+func (zoo *ZookeeperActor) OnPullout(system *ActorSystem) {}
+
+func (zoo *ZookeeperActor) Watch(system *ActorSystem, path string, changeType PathChangeType) {
+	callback := func(result *WatchPathResult) {
+		zoo.rwMutx.RLock()
+		defer zoo.rwMutx.RUnlock()
+		for actor := range zoo.Watches[path] {
+			system.Request(actor, result)
+		}
+	}
+
+	var children []string
+	var c <-chan zk.Event
+	var err error
+
+	children, _, c, err = zoo.Conn.ChildrenW(path)
+
+	// initialize
+	cur := make(map[string]struct{})
+	if err != nil {
+		callback(&WatchPathResult{path, 0, err})
+	}
+
+	if len(children) > 0 {
+		for _, v := range children {
+			cur[v] = struct{}{}
+		}
+	}
+
+	for {
+		e := <-c
+		children, _, c, err = zoo.Conn.ChildrenW(path)
+		if err != nil {
+			callback(&WatchPathResult{path, 0, err})
+		} else if e.Type == zk.EventNodeChildrenChanged {
+			remote := make(map[string]struct{})
+			for _, v := range children {
+				remote[v] = struct{}{}
+			}
+
+			// remote - cur
+			if changeType&PathCreated != 0 {
+				for p := range remote {
+					if _, exist := cur[p]; !exist {
+						callback(&WatchPathResult{p, changeType, nil})
+					}
+				}
+			}
+
+			// cur - remote
+			if changeType&PathDeleted != 0 {
+				for p := range cur {
+					if _, exist := remote[p]; !exist {
+						callback(&WatchPathResult{p, changeType, nil})
+					}
+				}
+			}
+			cur = remote
+		}
+	}
 }
 
 func createZNodeRecursive(conn *zk.Conn, node string) (string, error) {

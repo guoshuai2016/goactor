@@ -1,4 +1,4 @@
-package system
+package goactor
 
 import (
 	queue "github.com/scryner/lfreequeue"
@@ -17,7 +17,9 @@ const (
 )
 
 type ActorInterface interface {
+	OnPlugin(system *ActorSystem)
 	Receive(system *ActorSystem, eventType EventType, event interface{}) interface{}
+	OnPullout(system *ActorSystem)
 }
 
 type innerActor struct {
@@ -25,9 +27,8 @@ type innerActor struct {
 	notifyChan chan *Event
 	events     *queue.Queue
 
-	name    string
-	system  *ActorSystem
-	exiting bool
+	name   string
+	system *ActorSystem
 }
 
 func (actor *innerActor) push(event *Event) {
@@ -38,24 +39,29 @@ func (actor *innerActor) push(event *Event) {
 	}
 }
 
-func (actor *innerActor) stop() {
-	actor.exiting = true
-	select {
-	case actor.notifyChan <- nil:
-	default:
-	}
+func (actor *innerActor) plugin() {
+	actor.actorImpl.OnPlugin(actor.system)
+}
+
+func (actor *innerActor) pullout() {
+	actor.actorImpl.OnPullout(actor.system)
 }
 
 func (actor *innerActor) loop() {
+	actor.actorImpl.OnPlugin(actor.system)
+	defer actor.actorImpl.OnPullout(actor.system)
 	for {
 		<-actor.notifyChan
-		if actor.exiting {
-			return
-		}
 
 		for {
 			if event, ok := actor.events.Dequeue(); ok {
 				typedEvent := event.(*Event)
+
+				if _, ok := typedEvent.event.(ExitEvent); ok {
+					// TODO: custom exiting!
+					return
+				}
+
 				if typedEvent.responseChan == nil {
 					actor.actorImpl.Receive(actor.system, EVENT_REQUEST, typedEvent.event)
 				} else {

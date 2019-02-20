@@ -3,7 +3,7 @@ package standard
 import (
 	"errors"
 	"fmt"
-	. "github.com/xxpxxxxp/goactor/system"
+	. "github.com/xxpxxxxp/goactor"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -24,7 +24,7 @@ type HttpRequest struct {
 	Headers []*Parameter
 }
 
-func (h *HttpRequest) Connect(client *http.Client) ([]byte, error) {
+func (h *HttpRequest) connect(client *http.Client) ([]byte, error) {
 	req, _ := http.NewRequest(h.Method, h.Url, h.Body)
 
 	if h.Headers != nil {
@@ -50,6 +50,8 @@ type HttpActor struct {
 	Client *http.Client
 }
 
+func (h *HttpActor) OnPlugin(system *ActorSystem) {}
+
 func (h *HttpActor) Receive(system *ActorSystem, eventType EventType, event interface{}) interface{} {
 	type IndexedResponse struct {
 		Index   int
@@ -57,7 +59,7 @@ func (h *HttpActor) Receive(system *ActorSystem, eventType EventType, event inte
 	}
 
 	httpAsync := func(index int, client *http.Client, request *HttpRequest, wg *sync.WaitGroup, response chan<- *IndexedResponse) {
-		rst, err := request.Connect(client)
+		rst, err := request.connect(client)
 		response <- &IndexedResponse{index, &HttpResponse{rst, err}}
 		wg.Done()
 	}
@@ -68,7 +70,7 @@ func (h *HttpActor) Receive(system *ActorSystem, eventType EventType, event inte
 		case EVENT_REQUEST:
 			// caller doesn't care about result
 			for _, r := range request {
-				go r.Connect(h.Client)
+				go r.connect(h.Client)
 			}
 			return nil
 		case EVENT_REQUIRE:
@@ -108,10 +110,10 @@ func (h *HttpActor) Receive(system *ActorSystem, eventType EventType, event inte
 		switch eventType {
 		case EVENT_REQUEST:
 			// caller doesn't care about result
-			go request.Connect(h.Client)
+			go request.connect(h.Client)
 			return nil
 		case EVENT_REQUIRE:
-			rst, err := request.Connect(h.Client)
+			rst, err := request.connect(h.Client)
 			return &HttpResponse{rst, err}
 		}
 	default:
@@ -119,3 +121,5 @@ func (h *HttpActor) Receive(system *ActorSystem, eventType EventType, event inte
 	}
 	return nil
 }
+
+func (h *HttpActor) OnPullout(system *ActorSystem) {}

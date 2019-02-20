@@ -1,4 +1,4 @@
-package system
+package goactor
 
 import (
 	"errors"
@@ -8,6 +8,8 @@ import (
 
 	queue "github.com/scryner/lfreequeue"
 )
+
+type ExitEvent int
 
 type ActorSystem struct {
 	router              Router
@@ -26,7 +28,6 @@ func (system *ActorSystem) AddActor(name string, actorImpl ActorInterface) (ok b
 		events:     queue.NewQueue(),
 		name:       name,
 		system:     system,
-		exiting:    false,
 	}
 
 	if actors, ok := system.actors[name]; ok {
@@ -45,7 +46,10 @@ func (system *ActorSystem) RemoveActor(name string, actorImpl ActorInterface) (o
 	defer system.lock.Unlock()
 	if actors, ok := system.actors[name]; ok {
 		if len(actors) == 1 && actors[0].actorImpl == actorImpl {
-			actors[0].stop()
+			actors[0].push(&Event{
+				event:        ExitEvent(0),
+				responseChan: nil,
+			})
 			delete(system.actors, name)
 		} else {
 			index := -1
@@ -56,7 +60,10 @@ func (system *ActorSystem) RemoveActor(name string, actorImpl ActorInterface) (o
 				}
 			}
 			if index >= 0 {
-				actors[index].stop()
+				actors[index].push(&Event{
+					event:        ExitEvent(0),
+					responseChan: nil,
+				})
 				system.actors[name] = append(actors[:index], actors[index+1:]...)
 				return true, nil
 			}
@@ -70,7 +77,10 @@ func (system *ActorSystem) Shutdown(name string) (ok bool, err error) {
 	defer system.lock.Unlock()
 	for _, actors := range system.actors {
 		for _, actor := range actors {
-			actor.stop()
+			actor.push(&Event{
+				event:        ExitEvent(0),
+				responseChan: nil,
+			})
 		}
 	}
 	// force clean

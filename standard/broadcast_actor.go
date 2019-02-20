@@ -1,12 +1,14 @@
 package standard
 
 import (
-	. "github.com/xxpxxxxp/goactor/system"
+	. "github.com/xxpxxxxp/goactor"
 )
 
 type BroadcastActor struct {
 	BroadCastGroup []string // actor names
 }
+
+func (broadcaster *BroadcastActor) OnPlugin(system *ActorSystem) {}
 
 func (broadcaster *BroadcastActor) Receive(system *ActorSystem, eventType EventType, event interface{}) interface{} {
 	if eventType != EVENT_REQUEST {
@@ -19,3 +21,5 @@ func (broadcaster *BroadcastActor) Receive(system *ActorSystem, eventType EventT
 
 	return nil
 }
+
+func (broadcaster *BroadcastActor) OnPullout(system *ActorSystem) {}
