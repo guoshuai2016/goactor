@@ -13,10 +13,14 @@ type FullQualifiedNameRouter struct {
 	balancer Balancer
 }
 
-func NewFullQualifiedNameWithRandomBalancerRouter() *FullQualifiedNameRouter {
+func NewFullQualifiedNameWithCustomBalancerRouter(balancer Balancer) *FullQualifiedNameRouter {
 	return &FullQualifiedNameRouter{
-		balancer: NewRandomBalancer(),
+		balancer: balancer,
 	}
+}
+
+func NewFullQualifiedNameWithRandomBalancerRouter() *FullQualifiedNameRouter {
+	return NewFullQualifiedNameWithCustomBalancerRouter(NewRandomBalancer())
 }
 
 func (router *FullQualifiedNameRouter) Route(actorName string, actors map[string][]*innerActor) (actor *innerActor, err error) {
